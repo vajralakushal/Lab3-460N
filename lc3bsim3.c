@@ -162,7 +162,7 @@ int READY;	/* ready bit */
 
 int REGS[LC_3b_REGS]; /* register file. */
 
-int MICROINSTRUCTION[CONTROL_STORE_BITS]; /* The microintruction */
+int MICROINSTRUCTION[CONTROL_STORE_BITS]; /* The microinstruction */
 
 int STATE_NUMBER; /* Current State Number - Provided for debugging */ 
 } System_Latches;
@@ -581,6 +581,21 @@ void eval_micro_sequencer() {
    * Evaluate the address of the next state according to the 
    * micro sequencer logic. Latch the next microinstruction.
    */
+
+   int ird = GetIRD(CURRENT_LATCHES.MICROINSTRUCTION);
+   if(ird == 1){ // this is state 32, handle the transfer for the opcode
+
+    return;
+   }
+
+   int cond0 = (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x01) >> 0;
+   int cond1 = (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x02) >> 1;
+   int r = CURRENT_LATCHES.READY;
+   int ben = CURRENT_LATCHES.BEN;
+   int ir11 = CURRENT_LATCHES. 
+
+
+   
 
 }
 
