@@ -587,7 +587,7 @@ void eval_micro_sequencer() {
     if(ird == 1){ // this is state 32, handle the transfer for the opcode
         int opcode = (CURRENT_LATCHES.IR & 0xF000) >> 12; //shift it over 12 bits just to get the front four digits that is the op code
         //important to note that the opcode given above is also the state number
-        memcpy(CURRENT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[opcode], sizeof(int)*CONTROL_STORE_BITS); //not sure why the * is there for the size, will ask TA. copied from line 522
+        memcpy(NEXT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[opcode], sizeof(int)*CONTROL_STORE_BITS); //not sure why the * is there for the size, will ask TA. copied from line 522
         NEXT_LATCHES.STATE_NUMBER = opcode;
         return;
     }
@@ -616,13 +616,9 @@ void eval_micro_sequencer() {
 
     int nextState = j0 + j1 + j2 + j3 + j4 + j5;
 
-    memcpy(CURRENT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[nextState], sizeof(int)*CONTROL_STORE_BITS); //not sure why the * is there for the size, will ask TA. copied from line 522
+    //
+    memcpy(NEXT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[nextState], sizeof(int)*CONTROL_STORE_BITS); //not sure why the * is there for the size, will ask TA. copied from line 522
     NEXT_LATCHES.STATE_NUMBER = nextState;
-
-
-
-
-
     return;
 }
 
@@ -635,6 +631,10 @@ void cycle_memory() {
    * If fourth, we need to latch Ready bit at the end of 
    * cycle to prepare microsequencer for the fifth cycle.  
    */
+
+
+
+
 
 }
 
@@ -661,6 +661,28 @@ void drive_bus() {
    * Datapath routine for driving the bus from one of the 5 possible 
    * tristate drivers. 
    */
+
+    if(GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        //fill in bus value
+        return;
+    }
+    if(GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        //fill in bus value
+        return;
+    }
+    if(GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        //fill in bus value
+        return;
+    }
+    if(GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        //fill in bus value
+        return;
+    }
+    if(GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        //fill in bus value
+        return;
+    }
+
 
     
 
