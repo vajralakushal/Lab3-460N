@@ -582,42 +582,48 @@ void eval_micro_sequencer() {
    * micro sequencer logic. Latch the next microinstruction.
    */
 
-   //Figure C.5 in the Appendix
-   int ird = GetIRD(CURRENT_LATCHES.MICROINSTRUCTION);
-   if(ird == 1){ // this is state 32, handle the transfer for the opcode
+    //Figure C.5 in the Appendix
+    int ird = GetIRD(CURRENT_LATCHES.MICROINSTRUCTION);
+    if(ird == 1){ // this is state 32, handle the transfer for the opcode
+        int opcode = (CURRENT_LATCHES.IR & 0xF000) >> 12; //shift it over 12 bits just to get the front four digits that is the op code
+        //important to note that the opcode given above is also the state number
+        memcpy(CURRENT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[opcode], sizeof(int)*CONTROL_STORE_BITS); //not sure why the * is there for the size, will ask TA. copied from line 522
+        NEXT_LATCHES.STATE_NUMBER = opcode;
+        return;
+    }
+
+    int cond0 = (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x01) >> 0;
+    int cond1 = (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x02) >> 1;
+    int r = CURRENT_LATCHES.READY;
+    int ben = CURRENT_LATCHES.BEN;
+    int ir11 = (CURRENT_LATCHES.IR & 0x0800) >> 11;
+    int j0 = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION) & 0x01) >> 0;
+    int j1 = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION) & 0x02) >> 1;
+    int j2 = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION) & 0x04) >> 2;
+    //These do not need to be shifted bc they are being added and not taken into account by the and and or gates
+    int j3 = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION) & 0x08);
+    int j4 = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION) & 0x10);
+    int j5 = (GetJ(CURRENT_LATCHES.MICROINSTRUCTION) & 0x20);
+
+    //these are the or gates that lead into the MUX
+    int addrMode = (cond0 & cond1 & ir11) | j0;
+    int ready = (cond0 & (~cond1) & r) | j1;
+    int branch = ((~cond0) | cond1 | ben) | j2;
+
+    j0 = addrMode;
+    j1 = ready << 1;
+    j2 = branch << 2;
+
+    int nextState = j0 + j1 + j2 + j3 + j4 + j5;
+
+    memcpy(CURRENT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[nextState], sizeof(int)*CONTROL_STORE_BITS); //not sure why the * is there for the size, will ask TA. copied from line 522
+    NEXT_LATCHES.STATE_NUMBER = nextState;
+
+
+
+
 
     return;
-   }
-
-   int cond0 = (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x01) >> 0;
-   int cond1 = (GetCOND(CURRENT_LATCHES.MICROINSTRUCTION) & 0x02) >> 1;
-   int r = CURRENT_LATCHES.READY;
-   int ben = CURRENT_LATCHES.BEN;
-   int ir11 = (CURRENT_LATCHES.IR & 0x0800) >> 11;
-   int j0 = GetJ(CURRENT_LATCHES.MICROINSTRUCTION & 0x01) >> 0;
-   int j1 = GetJ(CURRENT_LATCHES.MICROINSTRUCTION & 0x02) >> 1;
-   int j2 = GetJ(CURRENT_LATCHES.MICROINSTRUCTION & 0x04) >> 2;
-   //These do not need to be shifted bc they are being added and not taken into account by the and and or gates
-   int j3 = GetJ(CURRENT_LATCHES.MICROINSTRUCTION & 0x08);
-   int j4 = GetJ(CURRENT_LATCHES.MICROINSTRUCTION & 0x10);
-   int j5 = GetJ(CURRENT_LATCHES.MICROINSTRUCTION & 0x20);
-
-   //these are the or gates that lead into the MUX
-   int addrMode = (cond0 & cond1 & ir11) | j0;
-   int ready = (cond0 & (~cond1) & r) | j1;
-   int branch = ((~cond0) | cond1 | ben) | j2;
-
-   j0 = addrMode;
-   j1 = ready << 1;
-   j2 = branch << 2;
-
-   int nextAddress = j0 + j1 + j2 + j3 + j4 + j5;
-
-
-
-
-   
-
 }
 
 
@@ -654,7 +660,9 @@ void drive_bus() {
   /* 
    * Datapath routine for driving the bus from one of the 5 possible 
    * tristate drivers. 
-   */       
+   */
+
+    
 
 }
 
