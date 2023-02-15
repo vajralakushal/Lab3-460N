@@ -696,6 +696,19 @@ void latch_datapath_values() {
    * values in the data path at the end of this cycle.  Some values
    * require sourcing the bus; therefore, this routine has to come 
    * after drive_bus.
-   */       
+   */
+    if(GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+
+    if(GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+
+    if(GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+
+    if(GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+
+    if(GetLD_BEN(CURRENT_LATCHES.MICROINSTRUCTION) == 1){} 
+
+    if(GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+
+    if(GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}          
 
 }
