@@ -577,6 +577,8 @@ int main(int argc, char *argv[]) {
 //Global Variables to keep track of stuff across functions
 int DR;
 int SR;
+int ADDR1;
+int ADDR2;
 
 
 void eval_micro_sequencer() {
@@ -658,7 +660,30 @@ void eval_bus_drivers() {
 
    //the inputs to the gates listed above are as follows:
    //DR, for LD.REG
-   //SR
+   //SR, for ALU purposes. Need a second one of these?
+   //PC, to set the value of the PC on the BUS if necessary in drive_bus
+   //ADDR1MUX
+   //ADDR2MUX; these two are for the MARMUX or PCMUX
+
+    if(GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
+        ADDR1 = CURRENT_LATCHES.PC;
+    } else{
+        //TODO: ADDR1 = BaseR, from table C.1
+    }
+
+    int addr2muxVal = GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION);
+    //the following values from table C.1 in appendix C
+    if(addr2muxVal == 0){
+        ADDR2 = 0;
+    } else if(addr2muxVal == 1){
+        int offset6 = CURRENT_LATCHES.IR & 0x003F; //getting the last six bits
+
+    } else if(addr2muxVal == 2){
+        int offset9 = CURRENT_LATCHES.IR & 0x01FF; //getting the last nine bits
+    } else if(addr2muxVal == 3){
+        int offset11 = CURRENT_LATCHES.IR & 0x07FF; //getting the last eleven bits
+    }
+
 
 
 
