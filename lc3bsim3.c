@@ -574,6 +574,10 @@ int main(int argc, char *argv[]) {
    Begin your code here 	  			       */
 /***************************************************************/
 
+//Global Variables to keep track of stuff across functions
+int DR;
+int SR;
+
 
 void eval_micro_sequencer() {
 
@@ -650,7 +654,17 @@ void eval_bus_drivers() {
    *		 Gate_ALU,
    *		 Gate_SHF,
    *		 Gate_MDR.
-   */    
+   */
+
+   //the inputs to the gates listed above are as follows:
+   //DR, for LD.REG
+   //SR
+
+
+
+
+    
+
 
 }
 
@@ -697,18 +711,64 @@ void latch_datapath_values() {
    * require sourcing the bus; therefore, this routine has to come 
    * after drive_bus.
    */
-    if(GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+    if(GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        NEXT_LATCHES.MAR = Low16bits(BUS); //from Data Path in Appendix C. The MAR is loaded right off the BUS, but only 16 bits are loaded into the MAR
+    }
 
-    if(GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+    if(GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
 
-    if(GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+    }
 
-    if(GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+    if(GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        NEXT_LATCHES.IR = Low16bits(BUS); //from Data Path in Appendix C. The IR is loaded right off the BUS, but only 16 bits are loaded into the IR
+    }
 
-    if(GetLD_BEN(CURRENT_LATCHES.MICROINSTRUCTION) == 1){} 
+    if(GetLD_BEN(CURRENT_LATCHES.MICROINSTRUCTION) == 1){ //state 32 on the state diagram
+        int ir11 = (CURRENT_LATCHES.IR & 0x0800) >> 11;
+        int ir10 = (CURRENT_LATCHES.IR & 0x0400) >> 10;
+        int ir9 = (CURRENT_LATCHES.IR & 0x0200) >> 9;
+        int ben_load_val = (ir11 & CURRENT_LATCHES.N) + (ir10 & CURRENT_LATCHES.Z) + (ir9 & CURRENT_LATCHES.P);
+        NEXT_LATCHES.BEN = ben_load_val;
+    }
 
-    if(GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}
+    if(GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        
+    }
 
-    if(GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){}          
+    if(GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        //first, reset all of the condition codes. only one of them can be set
+        NEXT_LATCHES.N = 0;
+        NEXT_LATCHES.Z = 0;
+        NEXT_LATCHES.P = 0;
+        int val = BUS; //pulling value off the bus to see what it should be
+
+        int neg_bit = (val & 0x8000) >> 15; //it's a four bit number, so the 1 at the MSB tells if it's negative or not
+        if(neg_bit == 1){
+            val = ~val; //google searched. this flips all of the bits
+            val += 1; //converted from two's complement
+        }
+        val = Low16bits(val); //TODO: why does this work
+
+        if(val < 0){
+            NEXT_LATCHES.N = 1;
+        } else if(val == 0){
+            NEXT_LATCHES.Z = 1;
+        } else{ //the only other option
+            NEXT_LATCHES.P = 1;
+        }
+    }
+
+    //Table C.1 from Appendix C
+    if(GetLD_PC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        int pcmux = GetPCMUX(CURRENT_LATCHES.MICROINSTRUCTION);
+        if(pcmux == 0){//PC = PC + 2
+            NEXT_LATCHES.PC = CURRENT_LATCHES.PC + 2;
+        } else if(pcmux == 1){//select value from BUS
+            NEXT_LATCHES.PC = BUS;
+        } else if(pcmux == 2){//adder
+            //NEXT_LATCHES.PC = 
+            //TODO: implement addition of adders functionality
+        }
+    }         
 
 }
