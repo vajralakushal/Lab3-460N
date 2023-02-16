@@ -577,12 +577,15 @@ int main(int argc, char *argv[]) {
 //Global Variables to keep track of stuff across functions
 int DR;
 int SR1;
+int firstOperand; //value in SR1
 int secondOperand; //from Piazza question @53. There isn't an SR2MUX explicitly identified in the control store
-         //however, it's always in bits 2:0 in IR if IR[5] is enabled. This is either a 
+         //however, it's always in bits 2:0 in IR if IR[5] is enabled. This is either an SR2 or imm5
 int ADDR1;
 int ADDR2;
 int MARMUX;
 int ALU;
+int MDR;
+int SHF;
 
 
 void eval_micro_sequencer() {
@@ -646,6 +649,8 @@ void cycle_memory() {
 
 
 
+
+
 }
 
 
@@ -665,11 +670,11 @@ void eval_bus_drivers() {
    //the inputs to the gates listed above are as follows:
    //DR, for LD.REG
    //SR, for ALU purposes. Need a second one of these, depending on if it's SR2 or imm5
-   //PC, to set the value of the PC on the BUS if necessary in drive_bus
    //ADDR1MUX
    //ADDR2MUX; these two are for the MARMUX or PCMUX
    //MARMUX
    //ALU, for the value of the ALU's output after computations
+   //SHF, for the value of the SHF's that the GATESHF puts on the bus
 
     //The following values from Table C.1 in Appendix C
     if(GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
@@ -684,23 +689,58 @@ void eval_bus_drivers() {
     } else{// can only be zero or one
         SR1 = (CURRENT_LATCHES.IR & 0x01C0) >> 6;
     }
+    firstOperand = CURRENT_LATCHES.REGS[SR1];
 
     //calculating SR2 or imm5
     int operandType = (CURRENT_LATCHES.IR & 0x0020) >> 5; //isolating IR[5]
     if(operandType == 1){
         secondOperand = (CURRENT_LATCHES.IR & 0x001F) >> 4;
     } else{ // it's 0, and thus it's the SR2
-        secondOperand = (CURRENT_LATCHES.IR & 0x0007);
+        secondOperand = (CURRENT_LATCHES.IR & 0x0007); //get the register value first
+        secondOperand = CURRENT_LATCHES.REGS[secondOperand];
     }
 
+    //Now, firstOperand and secondOperand have the information needed to conduct the ALU operations on
 
+    //handling the ALUK part of things
+    //Table C.1 from Appendix C
+    int alukSelectionBits = GetALUK(CURRENT_LATCHES.MICROINSTRUCTION);
+    if(alukSelectionBits == 0){ //ADD
+        //need to handle potential two's complement scenarios;
+        int negFirstBit = (firstOperand & 0x8000) >> 3;
+        int negSecondBit = (secondOperand & 0x8000) >> 3;
+
+        if(negFirstBit == 1){
+            firstOperand = ~firstOperand;
+            firstOperand += 1;
+        }
+        if(negSecondBit == 1){
+            secondOperand = ~secondOperand;
+            secondOperand += 1;
+        }
+
+        ALU = firstOperand + secondOperand;
+
+        ALU = Low16bits(ALU);
+
+    } else if(alukSelectionBits == 1){ //AND
+        ALU = firstOperand & secondOperand;
+    } else if(alukSelectionBits == 2){ //XOR
+        ALU = Low16Bits(firstOperand ^ secondOperand);
+    } else if(alukSelectionBits == 3){ //PASSA
+        //TODO: what is this?
+        //ChatGPT says that it's the SR1 just going through
+        ALU = CURRENT_LATCHES.REGS[SR1];
+    }
+
+    ALU = Low16Bits(ALU);
 
 
     //values from Table C.1 in Appendix C
     if(GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
         ADDR1 = CURRENT_LATCHES.PC;
     } else{
-        ADDR1 = DR;
+        ADDR1 = CURRENT_LATCHES.REGS[SR1];
     }
 
     int addr2muxVal = GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION);
@@ -710,14 +750,26 @@ void eval_bus_drivers() {
     } else if(addr2muxVal == 1){
         int offset6 = CURRENT_LATCHES.IR & 0x003F; //getting the last six bits
         //TODO: sign extension: offset6 = 
+        int neg6 = (CURRENT_LATCHES.IR & 0x0020) >> 5;
+        if(neg6 == 1){
+            offset6 = offset6 | 0xFFC0;
+        }
         ADDR2 = offset6;
     } else if(addr2muxVal == 2){
         int offset9 = CURRENT_LATCHES.IR & 0x01FF; //getting the last nine bits
         //TODO: sign extension: offset6 = 
+        int neg9 = (CURRENT_LATCHES.IR & 0x0100) >> 8;
+        if(neg9 == 1){
+            offset9 = offset9 | 0xFF00;
+        }
         ADDR2 = offset9;
     } else if(addr2muxVal == 3){
         int offset11 = CURRENT_LATCHES.IR & 0x07FF; //getting the last eleven bits
         //TODO: sign extension: offset6 = 
+        int neg11 = (CURRENT_LATCHES.IR & 0x0400) >> 10;
+        if(neg11 == 1){
+            offset11 = offset11 | 0xFC00;
+        }
         ADDR2 = offset11;
     }
     if(GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
@@ -731,22 +783,56 @@ void eval_bus_drivers() {
     } else{
         MARMUX = ADDR1 + ADDR2;
     }
+    MARMUX = Low16Bits(MARMUX);
 
-
-    //handling the ALUK part of things
-    //Table C.1 from Appendix C
-    int alukSelectionBits = GetALUK(CURRENT_LATCHES.MICROINSTRUCTION);
-    if(alukSelectionBits == 0){ //ADD
-
-    } else if(alukSelectionBits == 1){ //AND
-
-    } else if(alukSelectionBits == 2){ //XOR
-        
-    } else if(alukSelectionBits == 3){ //PASSA
-        
+    if(GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION) == 1){ //the whole word is being written, Table C.1
+        MDR = CURRENT_LATCHES.MDR; //is the MDR being written? or the SR value
+    } else{ //only one byte is being written, this depends on the MAR[0] value
+        int mar0Flag = (CURRENT_LATCHES.MAR & 0x0001);
+        if(mar0Flag == 1){ //Section C.5.2, bits [7:0]
+            //time to get the sr[7:0]'sr[7:0]
+            int bottomHalf = (CURRENT_LATCHES.MDR & 0x00FF);
+            int topHalf = (CURRENT_LATCHES.MDR & 0x00FF) << 8;
+            MDR = bottomHalf + topHalf;
+        } else{ //bits [15:8]
+            int bottomHalf = (CURRENT_LATCHES.MDR & 0xFF00) >> 8;
+            int topHalf = (CURRENT_LATCHES.MDR & 0xFF00);
+            MDR = bottomHalf + topHalf;
+        }
     }
+    MDR = Low16Bits(MDR);
 
+    //nothing in the control store explicity to check if it's a SHF, so gonna use the OPcode to
+    //find what to put on the BUS for GateSHF in the next function
+    int shfChecker = (CURRENT_LATCHES.IR & 0xF000) >> 12;
+    if(shfChecker == 13){
+        //it's the shf opcode
+        int val = (CURRENT_LATCHES.IR & 0x000F);; //the value to shift by
+        int shfCondition = (CURRENT_LATCHES.IR & 0x0030) >> 4;
+        if(shfCondition == 0){//LSHF
+            SHF = CURRENT_LATCHES.REG[SR1] << val;
+        } else if(shfCondition == 1){//RSHFL
+            SHF = CURRENT_LATCHES.REG[SR1] >> val;
+        } else if(shfCondition == 3){//RSHFA
+            int negFirstBit = (firstOperand & 0x8000) >> 3; //to check if the sign bits need to be shifted over as well
+            //TODO: the firstOperand could be manipulated in the middle? idk
+            if(negFirstBit == 1){
+                //first, two's complement it. It's easier to arithmetically right shift
+                firstOperand = ~firstOperand;
+                firstOperand += 1;
+                firstOperand = firstOperand >> val; //in C, this should arithmetic right shift
+                //now, we can two's complement it again
+                firstOperand = ~firstOperand;
+                firstOperand += 1;
+                SHF = firstOperand;
+            } else{// just a regular RSHFL again
+                SHF = CURRENT_LATCHES.REG[SR1] >> val;
+            }
 
+        }
+    }
+    SHF = Low16Bits(SHF);
+    
 
 
 
@@ -771,19 +857,19 @@ void drive_bus() {
         return;
     }
     if(GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        //fill in bus value
+        BUS = MDR;
         return;
     }
     if(GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        //fill in bus value
+        BUS = ALU;
         return;
     }
     if(GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        //fill in bus value
+        BUS = MARMUX;
         return;
     }
     if(GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        //fill in bus value
+        BUS = SHF;
         return;
     }
 
@@ -801,16 +887,33 @@ void latch_datapath_values() {
    * require sourcing the bus; therefore, this routine has to come 
    * after drive_bus.
    */
+
+   //make sure that for all of the following load instructions, if the value in current latches is not being changed,
+   //explicitly keep the same value. We don't wanna hold onto the old values in NEXT_LATCHES jic
+
     if(GetLD_MAR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        NEXT_LATCHES.MAR = Low16bits(BUS); //from Data Path in Appendix C. The MAR is loaded right off the BUS, but only 16 bits are loaded into the MAR
+        NEXT_LATCHES.MAR = BUS; //from Data Path in Appendix C. The MAR is loaded right off the BUS, but only 16 bits are loaded into the MAR
+    } else{
+        NEXT_LATCHES.MAR = CURRENT_LATCHES.MAR;
     }
 
     if(GetLD_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-
+        //for the mux right before the LD.MDR on the data path. We have to see if MIO.EN is enabled along with
+        //if the ready bit is enabled, as will be defined in cycle_memory
+        //it'll load from MAR. Otherwise, it'll load from the BUS.
+        if(CURRENT_LATCHES.READY == 1 && CURRENT_LATCHES.MIO_EN == 1){ 
+            //NEXT_LATCHES.MDR = MEMORY[CURRENT_LATCHES.MAR][0] + (MEMORY[CURRENT_LATCHES.MAR][1] << 8);
+        } else{// i think we can just load off the BUS?
+            NEXT_LATCHES.MDR = BUS;
+        }
+    } else{
+        NEXT_LATCHES.MDR = CURRENT_LATCHES.MDR;
     }
 
     if(GetLD_IR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        NEXT_LATCHES.IR = Low16bits(BUS); //from Data Path in Appendix C. The IR is loaded right off the BUS, but only 16 bits are loaded into the IR
+        NEXT_LATCHES.IR = BUS; //from Data Path in Appendix C. The IR is loaded right off the BUS, but only 16 bits are loaded into the IR
+    } else{
+        NEXT_LATCHES.IR = CURRENT_LATCHES.IR;
     }
 
     if(GetLD_BEN(CURRENT_LATCHES.MICROINSTRUCTION) == 1){ //state 32 on the state diagram
@@ -819,10 +922,14 @@ void latch_datapath_values() {
         int ir9 = (CURRENT_LATCHES.IR & 0x0200) >> 9;
         int ben_load_val = (ir11 & CURRENT_LATCHES.N) + (ir10 & CURRENT_LATCHES.Z) + (ir9 & CURRENT_LATCHES.P);
         NEXT_LATCHES.BEN = ben_load_val;
+    } else{
+        NEXT_LATCHES.BEN = CURRENT_LATCHES.BEN;
     }
 
+
+    memcpy(NEXT_LATCHES.REGS, CURRENT_LATCHES.REGS, sizeof(int)* 8);
     if(GetLD_REG(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        
+        NEXT_LATCHES.REGS[DR] = BUS;
     }
 
     if(GetLD_CC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
@@ -846,6 +953,10 @@ void latch_datapath_values() {
         } else{ //the only other option
             NEXT_LATCHES.P = 1;
         }
+    } else{
+        NEXT_LATCHES.N = CURRENT_LATCHES.N;
+        NEXT_LATCHES.Z = CURRENT_LATCHES.Z;
+        NEXT_LATCHES.P = CURRENT_LATCHES.P;
     }
 
     //Table C.1 from Appendix C
@@ -858,6 +969,8 @@ void latch_datapath_values() {
         } else if(pcmux == 2){//adder
             NEXT_LATCHES.PC = ADDR1 + ADDR2;
         }
-    }         
+    } else{
+        NEXT_LATCHES.PC = CURRENT_LATCHES.PC;
+    }        
 
 }
