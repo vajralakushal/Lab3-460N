@@ -576,9 +576,13 @@ int main(int argc, char *argv[]) {
 
 //Global Variables to keep track of stuff across functions
 int DR;
-int SR;
+int SR1;
+int secondOperand; //from Piazza question @53. There isn't an SR2MUX explicitly identified in the control store
+         //however, it's always in bits 2:0 in IR if IR[5] is enabled. This is either a 
 int ADDR1;
 int ADDR2;
+int MARMUX;
+int ALU;
 
 
 void eval_micro_sequencer() {
@@ -622,7 +626,7 @@ void eval_micro_sequencer() {
 
     int nextState = j0 + j1 + j2 + j3 + j4 + j5;
 
-    //
+    //Get ready to transition to the next state
     memcpy(NEXT_LATCHES.MICROINSTRUCTION, CONTROL_STORE[nextState], sizeof(int)*CONTROL_STORE_BITS); //not sure why the * is there for the size, will ask TA. copied from line 522
     NEXT_LATCHES.STATE_NUMBER = nextState;
     return;
@@ -660,15 +664,43 @@ void eval_bus_drivers() {
 
    //the inputs to the gates listed above are as follows:
    //DR, for LD.REG
-   //SR, for ALU purposes. Need a second one of these?
+   //SR, for ALU purposes. Need a second one of these, depending on if it's SR2 or imm5
    //PC, to set the value of the PC on the BUS if necessary in drive_bus
    //ADDR1MUX
    //ADDR2MUX; these two are for the MARMUX or PCMUX
+   //MARMUX
+   //ALU, for the value of the ALU's output after computations
 
+    //The following values from Table C.1 in Appendix C
+    if(GetDRMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
+        DR = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
+    } else{// can only be zero or one
+        DR = 7;
+    }
+
+    //The following values from Table C.1 in Appendix C
+    if(GetSR1MUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
+        SR1 = (CURRENT_LATCHES.IR & 0x0E00) >> 9;
+    } else{// can only be zero or one
+        SR1 = (CURRENT_LATCHES.IR & 0x01C0) >> 6;
+    }
+
+    //calculating SR2 or imm5
+    int operandType = (CURRENT_LATCHES.IR & 0x0020) >> 5; //isolating IR[5]
+    if(operandType == 1){
+        secondOperand = (CURRENT_LATCHES.IR & 0x001F) >> 4;
+    } else{ // it's 0, and thus it's the SR2
+        secondOperand = (CURRENT_LATCHES.IR & 0x0007);
+    }
+
+
+
+
+    //values from Table C.1 in Appendix C
     if(GetADDR1MUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
         ADDR1 = CURRENT_LATCHES.PC;
     } else{
-        //TODO: ADDR1 = BaseR, from table C.1
+        ADDR1 = DR;
     }
 
     int addr2muxVal = GetADDR2MUX(CURRENT_LATCHES.MICROINSTRUCTION);
@@ -677,12 +709,44 @@ void eval_bus_drivers() {
         ADDR2 = 0;
     } else if(addr2muxVal == 1){
         int offset6 = CURRENT_LATCHES.IR & 0x003F; //getting the last six bits
-
+        //TODO: sign extension: offset6 = 
+        ADDR2 = offset6;
     } else if(addr2muxVal == 2){
         int offset9 = CURRENT_LATCHES.IR & 0x01FF; //getting the last nine bits
+        //TODO: sign extension: offset6 = 
+        ADDR2 = offset9;
     } else if(addr2muxVal == 3){
         int offset11 = CURRENT_LATCHES.IR & 0x07FF; //getting the last eleven bits
+        //TODO: sign extension: offset6 = 
+        ADDR2 = offset11;
     }
+    if(GetLSHF1(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
+        ADDR2 = ADDR2 << 1;
+    }
+
+    if(GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
+        //Table C.1, data values
+        int marmuxVal = (CURRENT_LATCHES.IR & 0x00FF) << 1; //no need for particular zero extension, just and it with zeros at the end of the last 8 bits
+        MARMUX = marmuxVal;
+    } else{
+        MARMUX = ADDR1 + ADDR2;
+    }
+
+
+    //handling the ALUK part of things
+    //Table C.1 from Appendix C
+    int alukSelectionBits = GetALUK(CURRENT_LATCHES.MICROINSTRUCTION);
+    if(alukSelectionBits == 0){ //ADD
+
+    } else if(alukSelectionBits == 1){ //AND
+
+    } else if(alukSelectionBits == 2){ //XOR
+        
+    } else if(alukSelectionBits == 3){ //PASSA
+        
+    }
+
+
 
 
 
@@ -703,6 +767,7 @@ void drive_bus() {
 
     if(GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
         //fill in bus value
+        BUS = CURRENT_LATCHES.PC;
         return;
     }
     if(GetGATE_MDR(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
@@ -791,8 +856,7 @@ void latch_datapath_values() {
         } else if(pcmux == 1){//select value from BUS
             NEXT_LATCHES.PC = BUS;
         } else if(pcmux == 2){//adder
-            //NEXT_LATCHES.PC = 
-            //TODO: implement addition of adders functionality
+            NEXT_LATCHES.PC = ADDR1 + ADDR2;
         }
     }         
 
