@@ -635,7 +635,7 @@ void eval_micro_sequencer() {
     return;
 }
 
-
+int cycles_passed = 1;
 void cycle_memory() {
  
   /* 
@@ -644,12 +644,35 @@ void cycle_memory() {
    * If fourth, we need to latch Ready bit at the end of 
    * cycle to prepare microsequencer for the fifth cycle.  
    */
+    
+    //CHECK MIO.EN and only if it's 1
+    //set ready bit to zero, set cycle to += 1
+    //if it's the fourth memory cycle, set the ready bit to one
+    // if ready bit is one, and cycle = 5
+        // check if it's read or write R.W, read is 0, write is 1
+        // if write, check data size (if 0, then byte, if 1, then word) and then write into memory
+        // if read, check data size and then put whatever is in MAR into MDR
+        //READY bit = 0, cycle = 0
+    
+    //update GLOBAL variable for cycle count
 
-
-
-
-
-
+    if(CURRENT_LATCHES.MIO_EN == 1){
+        if(cycles_passed == 4){
+            CURRENT_LATCHES.READY = 1;
+        } else if(cycles_passed == 5 && CURRENT_LATCHES.READY == 1){
+            int operation = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
+            if(operation == 1){// write to memory
+                MEMORY[CURRENT_LATCHES.MAR][0] = (CURRENT_LATCHES.MDR & 0x00FF);
+                MEMORY[CURRENT_LATCHES.MAR][1] = (CURRENT_LATCHES.MDR & 0xFF00) >> 8; 
+            } else{// read
+                //this is handled in latch datapath. NOTE: check to see if this works
+            }
+            cycles_passed = 1;
+        } else{
+            cycles_passed += 1;
+        }
+        
+    }
 
 }
 
@@ -832,25 +855,14 @@ void eval_bus_drivers() {
         }
     }
     SHF = Low16Bits(SHF);
-    
-
-
-
-
-
-    
-
-
 }
 
 
 void drive_bus() {
-
   /* 
    * Datapath routine for driving the bus from one of the 5 possible 
    * tristate drivers. 
    */
-
     if(GetGATE_PC(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
         //fill in bus value
         BUS = CURRENT_LATCHES.PC;
@@ -902,7 +914,7 @@ void latch_datapath_values() {
         //if the ready bit is enabled, as will be defined in cycle_memory
         //it'll load from MAR. Otherwise, it'll load from the BUS.
         if(CURRENT_LATCHES.READY == 1 && CURRENT_LATCHES.MIO_EN == 1){ 
-            //NEXT_LATCHES.MDR = MEMORY[CURRENT_LATCHES.MAR][0] + (MEMORY[CURRENT_LATCHES.MAR][1] << 8);
+            NEXT_LATCHES.MDR = MEMORY[CURRENT_LATCHES.MAR][0] + (MEMORY[CURRENT_LATCHES.MAR][1] << 8);
         } else{// i think we can just load off the BUS?
             NEXT_LATCHES.MDR = BUS;
         }
