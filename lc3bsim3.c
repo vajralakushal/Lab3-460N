@@ -582,8 +582,8 @@ int secondOperand; //from Piazza question @53. There isn't an SR2MUX explicitly 
          //however, it's always in bits 2:0 in IR if IR[5] is enabled. This is either an SR2 or imm5
 int ADDR1;
 int ADDR2;
-int MARMUX;
-int ALU;
+int MARMUX_VAL;
+int ALU_VAL;
 int MDR;
 int SHF;
 
@@ -621,7 +621,7 @@ void eval_micro_sequencer() {
     //these are the or gates that lead into the MUX
     int addrMode = (cond0 & cond1 & ir11) | j0;
     int ready = (cond0 & (~cond1) & r) | j1;
-    int branch = ((~cond0) | cond1 | ben) | j2;
+    int branch = ((~cond0) & cond1 & ben) | j2;
 
     j0 = addrMode;
     j1 = ready << 1;
@@ -635,7 +635,7 @@ void eval_micro_sequencer() {
     return;
 }
 
-int cycles_passed = 1;
+int cycles_passed = 0;
 void cycle_memory() {
  
   /* 
@@ -656,22 +656,22 @@ void cycle_memory() {
     
     //update GLOBAL variable for cycle count
 
-    if(CURRENT_LATCHES.MIO_EN == 1){
+    if(GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
         if(cycles_passed == 4){
-            CURRENT_LATCHES.READY = 1;
+            NEXT_LATCHES.READY = 1;
         } else if(cycles_passed == 5 && CURRENT_LATCHES.READY == 1){
             int operation = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
             if(operation == 1){// write to memory
-                MEMORY[CURRENT_LATCHES.MAR][0] = (CURRENT_LATCHES.MDR & 0x00FF);
-                MEMORY[CURRENT_LATCHES.MAR][1] = (CURRENT_LATCHES.MDR & 0xFF00) >> 8; 
+                MEMORY[CURRENT_LATCHES.MAR/2][0] = (CURRENT_LATCHES.MDR & 0x00FF);
+                MEMORY[CURRENT_LATCHES.MAR/2][1] = (CURRENT_LATCHES.MDR & 0xFF00) >> 8; 
             } else{// read
                 //this is handled in latch datapath. NOTE: check to see if this works
             }
-            cycles_passed = 1;
-        } else{
+            cycles_passed = 0;
+        }
+        else{
             cycles_passed += 1;
         }
-        
     }
 
 }
@@ -695,7 +695,7 @@ void eval_bus_drivers() {
    //SR, for ALU purposes. Need a second one of these, depending on if it's SR2 or imm5
    //ADDR1MUX
    //ADDR2MUX; these two are for the MARMUX or PCMUX
-   //MARMUX
+   //MARMUX_VAL
    //ALU, for the value of the ALU's output after computations
    //SHF, for the value of the SHF's that the GATESHF puts on the bus
 
@@ -742,21 +742,22 @@ void eval_bus_drivers() {
             secondOperand += 1;
         }
 
-        ALU = firstOperand + secondOperand;
+        ALU_VAL = firstOperand + secondOperand;
 
-        ALU = Low16bits(ALU);
+        ALU_VAL = Low16bits(ALU_VAL);
 
     } else if(alukSelectionBits == 1){ //AND
-        ALU = firstOperand & secondOperand;
+        ALU_VAL = firstOperand & secondOperand;
     } else if(alukSelectionBits == 2){ //XOR
-        ALU = Low16Bits(firstOperand ^ secondOperand);
+        int res = firstOperand ^ secondOperand;
+        ALU_VAL = Low16bits(res);
     } else if(alukSelectionBits == 3){ //PASSA
         //TODO: what is this?
         //ChatGPT says that it's the SR1 just going through
-        ALU = CURRENT_LATCHES.REGS[SR1];
+        ALU_VAL = CURRENT_LATCHES.REGS[SR1];
     }
 
-    ALU = Low16Bits(ALU);
+    ALU_VAL = Low16bits(ALU_VAL);
 
 
     //values from Table C.1 in Appendix C
@@ -802,11 +803,11 @@ void eval_bus_drivers() {
     if(GetMARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 0){
         //Table C.1, data values
         int marmuxVal = (CURRENT_LATCHES.IR & 0x00FF) << 1; //no need for particular zero extension, just and it with zeros at the end of the last 8 bits
-        MARMUX = marmuxVal;
+        MARMUX_VAL = marmuxVal;
     } else{
-        MARMUX = ADDR1 + ADDR2;
+        MARMUX_VAL = ADDR1 + ADDR2;
     }
-    MARMUX = Low16Bits(MARMUX);
+    MARMUX_VAL = Low16bits(MARMUX_VAL);
 
     if(GetDATA_SIZE(CURRENT_LATCHES.MICROINSTRUCTION) == 1){ //the whole word is being written, Table C.1
         MDR = CURRENT_LATCHES.MDR; //is the MDR being written? or the SR value
@@ -823,7 +824,7 @@ void eval_bus_drivers() {
             MDR = bottomHalf + topHalf;
         }
     }
-    MDR = Low16Bits(MDR);
+    MDR = Low16bits(MDR);
 
     //nothing in the control store explicity to check if it's a SHF, so gonna use the OPcode to
     //find what to put on the BUS for GateSHF in the next function
@@ -833,9 +834,9 @@ void eval_bus_drivers() {
         int val = (CURRENT_LATCHES.IR & 0x000F);; //the value to shift by
         int shfCondition = (CURRENT_LATCHES.IR & 0x0030) >> 4;
         if(shfCondition == 0){//LSHF
-            SHF = CURRENT_LATCHES.REG[SR1] << val;
+            SHF = CURRENT_LATCHES.REGS[SR1] << val;
         } else if(shfCondition == 1){//RSHFL
-            SHF = CURRENT_LATCHES.REG[SR1] >> val;
+            SHF = CURRENT_LATCHES.REGS[SR1] >> val;
         } else if(shfCondition == 3){//RSHFA
             int negFirstBit = (firstOperand & 0x8000) >> 3; //to check if the sign bits need to be shifted over as well
             //TODO: the firstOperand could be manipulated in the middle? idk
@@ -849,12 +850,12 @@ void eval_bus_drivers() {
                 firstOperand += 1;
                 SHF = firstOperand;
             } else{// just a regular RSHFL again
-                SHF = CURRENT_LATCHES.REG[SR1] >> val;
+                SHF = CURRENT_LATCHES.REGS[SR1] >> val;
             }
 
         }
     }
-    SHF = Low16Bits(SHF);
+    SHF = Low16bits(SHF);
 }
 
 
@@ -873,11 +874,11 @@ void drive_bus() {
         return;
     }
     if(GetGATE_ALU(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        BUS = ALU;
+        BUS = ALU_VAL;
         return;
     }
     if(GetGATE_MARMUX(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
-        BUS = MARMUX;
+        BUS = MARMUX_VAL;
         return;
     }
     if(GetGATE_SHF(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
@@ -913,8 +914,9 @@ void latch_datapath_values() {
         //for the mux right before the LD.MDR on the data path. We have to see if MIO.EN is enabled along with
         //if the ready bit is enabled, as will be defined in cycle_memory
         //it'll load from MAR. Otherwise, it'll load from the BUS.
-        if(CURRENT_LATCHES.READY == 1 && CURRENT_LATCHES.MIO_EN == 1){ 
-            NEXT_LATCHES.MDR = MEMORY[CURRENT_LATCHES.MAR][0] + (MEMORY[CURRENT_LATCHES.MAR][1] << 8);
+        if(CURRENT_LATCHES.READY == 1 && GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION) == 1){ 
+            NEXT_LATCHES.MDR = MEMORY[CURRENT_LATCHES.MAR/2][0] + (MEMORY[CURRENT_LATCHES.MAR/2][1] << 8);
+            NEXT_LATCHES.READY = 0;//does this work?
         } else{// i think we can just load off the BUS?
             NEXT_LATCHES.MDR = BUS;
         }
