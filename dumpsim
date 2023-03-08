@@ -28,7 +28,7 @@ PC           : 0x302c
 IR           : 0xd976
 STATE_NUMBER : 0x0012
 
-BUS          : 0x03c0
+BUS          : 0xffc0
 MDR          : 0xd976
 MAR          : 0x302a
 CCs: N = 0  Z = 0  P = 1
@@ -37,8 +37,30 @@ Registers:
 1: 0xfff0
 2: 0x0001
 3: 0xfff0
-4: 0x03c0
+4: 0xffc0
 5: 0xf000
 6: 0xfff1
 7: 0x0000
+
+
+Current register/bus values :
+-------------------------------------
+Cycle Count  : 243
+PC           : 0x0000
+IR           : 0xf025
+STATE_NUMBER : 0x0012
+
+BUS          : 0x0000
+MDR          : 0x0000
+MAR          : 0x004a
+CCs: N = 0  Z = 0  P = 1
+Registers:
+0: 0x0000
+1: 0xfff0
+2: 0x0001
+3: 0xfff0
+4: 0xffc0
+5: 0xf000
+6: 0xfff1
+7: 0x302e
 

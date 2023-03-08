@@ -870,12 +870,13 @@ void eval_bus_drivers() {
                 int start = 15;
                 int temp = val;
                 while(temp >= 1){
-                    int val = 0;
+                    int mul = 1;
                     for(int i = 0; i < start; i++){
-                        val *= 2;
+                        mul *= 2;
                     }
-                    mask += val;
+                    mask += mul;
                     temp -= 1;
+                    start -= 1;
                 }
                 SHF = firstOperand | mask;
                 
