@@ -635,7 +635,7 @@ void eval_micro_sequencer() {
     return;
 }
 
-int cycles_passed = 0;
+int cycles_passed = 1;
 void cycle_memory() {
  
   /* 
@@ -659,6 +659,7 @@ void cycle_memory() {
     if(GetMIO_EN(CURRENT_LATCHES.MICROINSTRUCTION) == 1){
         if(cycles_passed == 4){
             NEXT_LATCHES.READY = 1;
+            cycles_passed += 1;
         } else if(cycles_passed == 5 && CURRENT_LATCHES.READY == 1){
             int operation = GetR_W(CURRENT_LATCHES.MICROINSTRUCTION);
             if(operation == 1){// write to memory
@@ -667,7 +668,7 @@ void cycle_memory() {
             } else{// read
                 //this is handled in latch datapath. NOTE: check to see if this works
             }
-            cycles_passed = 0;
+            cycles_passed = 1;
         }
         else{
             cycles_passed += 1;
@@ -717,11 +718,35 @@ void eval_bus_drivers() {
     //calculating SR2 or imm5
     int operandType = (CURRENT_LATCHES.IR & 0x0020) >> 5; //isolating IR[5]
     if(operandType == 1){
-        secondOperand = (CURRENT_LATCHES.IR & 0x001F) >> 4;
+        secondOperand = (CURRENT_LATCHES.IR & 0x001F);// >> 4;
+
+        if(((secondOperand & 0x0010) >> 4) == 1){
+            secondOperand = (secondOperand | 0xFFF0);
+        }
     } else{ // it's 0, and thus it's the SR2
         secondOperand = (CURRENT_LATCHES.IR & 0x0007); //get the register value first
         secondOperand = CURRENT_LATCHES.REGS[secondOperand];
     }
+
+    //need to handle potential two's complement scenarios;
+    int negFirstBit = (firstOperand & 0x8000) >> 15;
+    int negSecondBit = (secondOperand & 0x8000) >> 15;
+
+    if(negFirstBit == 1){
+        short res = firstOperand;
+        firstOperand = (~res) + 1;
+        firstOperand = -firstOperand;
+    }
+    if(negSecondBit == 1){
+        short res = secondOperand;
+        secondOperand = (~res) + 1;
+        secondOperand = -secondOperand;
+    }
+
+    firstOperand = Low16bits(firstOperand);
+    secondOperand = Low16bits(secondOperand);
+
+    
 
     //Now, firstOperand and secondOperand have the information needed to conduct the ALU operations on
 
@@ -729,18 +754,7 @@ void eval_bus_drivers() {
     //Table C.1 from Appendix C
     int alukSelectionBits = GetALUK(CURRENT_LATCHES.MICROINSTRUCTION);
     if(alukSelectionBits == 0){ //ADD
-        //need to handle potential two's complement scenarios;
-        int negFirstBit = (firstOperand & 0x8000) >> 3;
-        int negSecondBit = (secondOperand & 0x8000) >> 3;
-
-        if(negFirstBit == 1){
-            firstOperand = ~firstOperand;
-            firstOperand += 1;
-        }
-        if(negSecondBit == 1){
-            secondOperand = ~secondOperand;
-            secondOperand += 1;
-        }
+        
 
         ALU_VAL = firstOperand + secondOperand;
 
@@ -838,17 +852,33 @@ void eval_bus_drivers() {
         } else if(shfCondition == 1){//RSHFL
             SHF = CURRENT_LATCHES.REGS[SR1] >> val;
         } else if(shfCondition == 3){//RSHFA
-            int negFirstBit = (firstOperand & 0x8000) >> 3; //to check if the sign bits need to be shifted over as well
+            int negFirstBit = (firstOperand & 0x8000) >> 15; //to check if the sign bits need to be shifted over as well
             //TODO: the firstOperand could be manipulated in the middle? idk
             if(negFirstBit == 1){
-                //first, two's complement it. It's easier to arithmetically right shift
-                firstOperand = ~firstOperand;
-                firstOperand += 1;
-                firstOperand = firstOperand >> val; //in C, this should arithmetic right shift
-                //now, we can two's complement it again
-                firstOperand = ~firstOperand;
-                firstOperand += 1;
-                SHF = firstOperand;
+                // //first, two's complement it. It's easier to arithmetically right shift
+                // short res = firstOperand;
+                // firstOperand = (~res) + 1;
+                // firstOperand = -firstOperand;
+                // firstOperand = firstOperand >> val; //in C, this should arithmetic right shift
+                // //now, we can two's complement it again
+                // firstOperand = ~firstOperand;
+                // firstOperand += 1;
+                // SHF = firstOperand;
+                firstOperand = firstOperand >> val;
+
+                short mask = 0;
+                int start = 15;
+                int temp = val;
+                while(temp >= 1){
+                    int val = 0;
+                    for(int i = 0; i < start; i++){
+                        val *= 2;
+                    }
+                    mask += val;
+                    temp -= 1;
+                }
+                SHF = firstOperand | mask;
+                
             } else{// just a regular RSHFL again
                 SHF = CURRENT_LATCHES.REGS[SR1] >> val;
             }
